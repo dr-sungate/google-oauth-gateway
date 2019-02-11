@@ -1,0 +1,45 @@
+// +build appengine
+
+package main
+
+import (
+	"github.com/dr-sungate/google-oauth-gateway/api/handler"
+	"github.com/dr-sungate/google-oauth-gateway/api/service/custommiddleware"
+	log "github.com/dr-sungate/google-oauth-gateway/api/service/logger"
+	"github.com/dr-sungate/google-oauth-gateway/api/service/utils"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"os"
+
+	"net/http"
+	_ "net/http/pprof"
+	"runtime"
+)
+
+func main() {
+	//############## 計測モード ###############
+	if utils.GetEnv("VERIFY_MODE", "") == "enable" {
+		runtime.SetBlockProfileRate(1)
+		go func() {
+			log.Error("", http.ListenAndServe("0.0.0.0:6060", nil))
+		}()
+	}
+	//#####################################
+	e := echo.New()
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
+	if os.Getenv("VERIFY_MODE") == "enable" {
+		e.Debug = true
+	}
+
+	e.GET("/oauth2/authorize", handler.GoogleOauth2Handler{}.Authorize)
+	e.GET("/oauth2/callback", handler.GoogleOauth2Handler{}.Callback)
+
+	oauth2config := custommiddleware.OAuth2Config{}
+	oauth2group := e.Group("/api/v1")
+	oauth2group.Use(custommiddleware.OAuth2WithConfig(oauth2config))
+
+	oauth2group.GET("/user/:id", handler.Users{}.GetUsers)
+	e.Logger.Fatal(e.Start(":" + utils.GetEnv("SERVER_PORT", "8080")))
+}
