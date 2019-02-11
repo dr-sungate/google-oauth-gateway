@@ -2,8 +2,8 @@ package logger
 
 import (
 	"fmt"
-	"github.com/dr-sungate/google-oauth-gateway/api/service/utils"
 	"log"
+	"os"
 	"runtime"
 )
 
@@ -12,7 +12,7 @@ func init() {
 }
 
 func Debug(msg ...interface{}) {
-	if utils.GetEnv("VERIFY_MODE", "") == "enable" {
+	if os.Getenv("VERIFY_MODE") == "enable" {
 		_, filename, line, _ := runtime.Caller(1)
 		log.Println(fmt.Sprintf("[%s] %s:%d ", "DEBG", filename, line), msg)
 	}

@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/dr-sungate/google-oauth-gateway/api/service/logger"
-	"github.com/dr-sungate/google-oauth-gateway/api/service/utils"
 	"golang.org/x/oauth2"
 	v2 "google.golang.org/api/oauth2/v2"
-
+	"os"
 	"time"
 )
 
@@ -29,18 +28,18 @@ type GoogleOAuth2Client struct {
 
 func NewGoogleOAuth2Client() *GoogleOAuth2Client {
 	scopes := []string{"openid", "email", "profile"}
-	log.Debug(fmt.Sprintf("ClientId: %s", utils.GetEnv("GOOGLE_CLIENTID", "")))
-	log.Debug(fmt.Sprintf("ClientSecret : %s", utils.GetEnv("GOOGLE_CLIENTSECRET", "")))
-	log.Debug(fmt.Sprintf("RedirectURL : %s", utils.GetEnv("GOOGLE_CALLBACKURL", "")))
+	log.Debug(fmt.Sprintf("ClientId: %s", os.Getenv("GOOGLE_CLIENTID")))
+	log.Debug(fmt.Sprintf("ClientSecret : %s", os.Getenv("GOOGLE_CLIENTSECRET")))
+	log.Debug(fmt.Sprintf("RedirectURL : %s", os.Getenv("GOOGLE_CALLBACKURL")))
 	I := &GoogleOAuth2Client{
 		Config: oauth2.Config{
-			ClientID:     utils.GetEnv("GOOGLE_CLIENTID", ""),
-			ClientSecret: utils.GetEnv("GOOGLE_CLIENTSECRET", ""),
+			ClientID:     os.Getenv("GOOGLE_CLIENTID"),
+			ClientSecret: os.Getenv("GOOGLE_CLIENTSECRET"),
 			Endpoint: oauth2.Endpoint{
 				AuthURL:  authorizeEndpoint,
 				TokenURL: tokenEndpoint,
 			},
-			RedirectURL: utils.GetEnv("GOOGLE_CALLBACKURL", ""),
+			RedirectURL: os.Getenv("GOOGLE_CALLBACKURL"),
 			Scopes:      scopes,
 		},
 	}

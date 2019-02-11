@@ -6,7 +6,6 @@ import (
 	"github.com/dr-sungate/google-oauth-gateway/api/handler"
 	"github.com/dr-sungate/google-oauth-gateway/api/service/custommiddleware"
 	log "github.com/dr-sungate/google-oauth-gateway/api/service/logger"
-	"github.com/dr-sungate/google-oauth-gateway/api/service/utils"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"os"
@@ -16,9 +15,11 @@ import (
 	"runtime"
 )
 
+const DEFAULT_PORT = "8080"
+
 func main() {
 	//############## 計測モード ###############
-	if utils.GetEnv("VERIFY_MODE", "") == "enable" {
+	if os.Getenv("VERIFY_MODE") == "enable" {
 		runtime.SetBlockProfileRate(1)
 		go func() {
 			log.Error("", http.ListenAndServe("0.0.0.0:6060", nil))
@@ -41,5 +42,9 @@ func main() {
 	oauth2group.Use(custommiddleware.OAuth2WithConfig(oauth2config))
 
 	oauth2group.GET("/user/:id", handler.Users{}.GetUsers)
-	e.Logger.Fatal(e.Start(":" + utils.GetEnv("SERVER_PORT", "8080")))
+	port := os.Getenv("SERVER_PORT")
+	if port == "" {
+		port = DEFAULT_PORT
+	}
+	e.Logger.Fatal(e.Start(":" + port))
 }
