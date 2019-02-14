@@ -2,15 +2,31 @@ package custommiddleware
 
 import (
 	"crypto/rsa"
+	"fmt"
 	crypto "github.com/SermoDigital/jose/crypto"
+	jws "github.com/SermoDigital/jose/jws"
+	jwt "github.com/SermoDigital/jose/jwt"
+	"github.com/dr-sungate/google-oauth-gateway/api/repository/entity"
+	"github.com/dr-sungate/google-oauth-gateway/api/service/client"
 	log "github.com/dr-sungate/google-oauth-gateway/api/service/logger"
+	"github.com/dr-sungate/google-oauth-gateway/api/service/parser"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"io"
+	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
+const HTTP_REQUEST_TIMEOUT = 300
 const OPENID_CONTXTKEY = "openidclaims"
+const (
+	PUBLICKEY_ENDPOINT = "https://www.googleapis.com/oauth2/v3/certs"
+	PUBLICKEY_METHOD   = "GET"
+	PUBLICKEY_TTL      = 5
+)
+const PUBLICKEY_CACHE_PREFIX = "publickey:::"
 
 type (
 	OAuth2Config struct {
@@ -23,7 +39,9 @@ type (
 		SuccessHandler OpenIDSuccessHandler
 		ErrorHandler   OpenIDErrorHandler
 
-		PublicKey *rsa.PublicKey
+		PublicKeyEndPoint string
+		PublicKeyTtl      int
+		PublicKey         *rsa.PublicKey
 
 		SigningMethod *crypto.SigningMethodRSA
 
@@ -41,6 +59,8 @@ type (
 		// AuthScheme to be used in the Authorization header.
 		// Optional. Default value "Bearer".
 		AuthScheme string
+
+		GoCacheClient *client.GoCacheClient
 	}
 
 	OpenIDSuccessHandler func(echo.Context)
@@ -56,15 +76,17 @@ var (
 var (
 	// DefaultJWTConfig is the default JWT auth middleware config.
 	DefaultJOAuth2Config = OAuth2Config{
-		Skipper:       middleware.DefaultSkipper,
-		SigningMethod: crypto.SigningMethodRS256,
-		ContextKey:    OPENID_CONTXTKEY,
-		TokenLookup:   "header:" + echo.HeaderAuthorization,
-		AuthScheme:    "Bearer",
+		Skipper:           middleware.DefaultSkipper,
+		SigningMethod:     crypto.SigningMethodRS256,
+		ContextKey:        OPENID_CONTXTKEY,
+		PublicKeyEndPoint: PUBLICKEY_ENDPOINT,
+		PublicKeyTtl:      PUBLICKEY_TTL,
+		TokenLookup:       "header:" + echo.HeaderAuthorization,
+		AuthScheme:        "Bearer",
 	}
 )
 
-func OAuth2(key interface{}) echo.MiddlewareFunc {
+func OAuth2() echo.MiddlewareFunc {
 	c := DefaultJOAuth2Config
 	return OAuth2WithConfig(c)
 }
@@ -79,6 +101,12 @@ func OAuth2WithConfig(config OAuth2Config) echo.MiddlewareFunc {
 	}
 	if config.ContextKey == "" {
 		config.ContextKey = DefaultJOAuth2Config.ContextKey
+	}
+	if config.PublicKeyEndPoint == "" {
+		config.PublicKeyEndPoint = DefaultJOAuth2Config.PublicKeyEndPoint
+	}
+	if config.PublicKeyTtl == 0 {
+		config.PublicKeyTtl = DefaultJOAuth2Config.PublicKeyTtl
 	}
 	if config.TokenLookup == "" {
 		config.TokenLookup = DefaultJOAuth2Config.TokenLookup
@@ -97,7 +125,6 @@ func OAuth2WithConfig(config OAuth2Config) echo.MiddlewareFunc {
 	case "cookie":
 		extractor = tokenFromCookie(parts[1])
 	}
-	log.Info(extractor)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -106,6 +133,35 @@ func OAuth2WithConfig(config OAuth2Config) echo.MiddlewareFunc {
 			}
 			if config.BeforeFunc != nil {
 				config.BeforeFunc(c)
+			}
+			if keyData, err := getPublicKey(c, config); err == nil {
+				config.PublicKey = keyData.PublicKey
+				if err != nil {
+					log.Error(err)
+				}
+			} else {
+				log.Error(err)
+			}
+
+			auth, err := extractor(c)
+			if err != nil {
+				log.Error(err)
+				return responseError(err, config)
+			}
+			token, err := jws.ParseJWT([]byte(auth))
+			if err != nil {
+				log.Error(err)
+				return responseError(err, config)
+			}
+			if err := token.Validate(config.PublicKey, config.SigningMethod); err != nil {
+				log.Error(err)
+				return responseError(err, config)
+			}
+			// Store user information from token into context.
+			c.Set(config.ContextKey, token.Claims())
+			log.Info(token.Claims())
+			if config.SuccessHandler != nil {
+				config.SuccessHandler(c)
 			}
 			return next(c)
 		}
@@ -151,4 +207,92 @@ func tokenFromCookie(name string) tokenExtractor {
 		}
 		return cookie.Value, nil
 	}
+}
+
+func getPublicKey(c echo.Context, config OAuth2Config) (entity.EncryptKey, error) {
+	encryptkey := entity.EncryptKey{}
+	parsedurl, err := url.Parse(config.PublicKeyEndPoint)
+	if err != nil {
+		return encryptkey, err
+	}
+	if cacheddata := getGoCache(config.GoCacheClient, parsedurl); cacheddata != nil {
+		log.Info("PublicKey is Get From Cache")
+		encryptkey.PublicKey = cacheddata.(*rsa.PublicKey)
+		return encryptkey, nil
+	}
+	responsedata, err := requestGet(parsedurl.String())
+	if err != nil {
+		log.Error(err)
+		return encryptkey, err
+	}
+	log.Debug(string(responsedata))
+	keys, err := parser.GetJsonItems(responsedata, "/keys")
+	if err != nil {
+		log.Error(err)
+		return encryptkey, err
+	}
+	var keydata []byte
+	switch convertedkeys := keys.(type) {
+	case []interface{}:
+		if len(convertedkeys) > 0 {
+			if jsonbyte, err := parser.JsonToByte(convertedkeys[0]); err != nil {
+				log.Error(err)
+				return encryptkey, err
+			} else {
+				keydata = jsonbyte
+			}
+		}
+	}
+	jwk, err := parser.ConvertJSONWebKey(keydata)
+	if err != nil {
+		log.Error(err)
+		return encryptkey, err
+	}
+	publickey, err := parser.ToRSAPublic(&jwk)
+	if err != nil {
+		log.Error(err)
+		return encryptkey, err
+	}
+	encryptkey.PublicKey = publickey
+	setGoCache(config.GoCacheClient, parsedurl, publickey, config.PublicKeyTtl)
+	return encryptkey, nil
+}
+
+func requestGet(requesturi string) ([]byte, error) {
+	log.Info(fmt.Sprintf("Request URI: %s", requesturi))
+	resp, err := http.Get(requesturi)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	defer func() {
+		io.Copy(ioutil.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+	return ioutil.ReadAll(resp.Body)
+}
+
+func getGoCache(gocache *client.GoCacheClient, parsedurl *url.URL) interface{} {
+	if value, exists := gocache.Get(PUBLICKEY_CACHE_PREFIX + parsedurl.String()); exists {
+		return value
+	}
+	return nil
+}
+
+func setGoCache(gocache *client.GoCacheClient, parsedurl *url.URL, publickey interface{}, ttl int) {
+	gocache.Set(PUBLICKEY_CACHE_PREFIX+parsedurl.String(), publickey, ttl)
+}
+
+func GetOpenIDUserIDKeyFromContext(c echo.Context, useridkey string) string {
+	claims := c.Get(OPENID_CONTXTKEY)
+	if useridkey == "" {
+		useridkey = "sub"
+	}
+	switch claimsconverted := claims.(type) {
+	case jwt.Claims:
+		return claimsconverted.Get(useridkey).(string)
+	default:
+		return ""
+	}
+
 }
