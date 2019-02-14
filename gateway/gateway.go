@@ -4,6 +4,7 @@ package main
 
 import (
 	"github.com/dr-sungate/google-oauth-gateway/api/handler"
+	"github.com/dr-sungate/google-oauth-gateway/api/service/client"
 	"github.com/dr-sungate/google-oauth-gateway/api/service/custommiddleware"
 	log "github.com/dr-sungate/google-oauth-gateway/api/service/logger"
 	"github.com/labstack/echo/v4"
@@ -37,7 +38,9 @@ func main() {
 	e.GET("/oauth2/authorize", handler.GoogleOauth2Handler{}.Authorize)
 	e.GET("/oauth2/callback", handler.GoogleOauth2Handler{}.Callback)
 
-	oauth2config := custommiddleware.OAuth2Config{}
+	oauth2config := custommiddleware.OAuth2Config{
+		GoCacheClient: client.NewGoCacheClient(custommiddleware.DefaultJOAuth2Config.PublicKeyTtl),
+	}
 	oauth2group := e.Group("/api/v1")
 	oauth2group.Use(custommiddleware.OAuth2WithConfig(oauth2config))
 
