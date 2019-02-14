@@ -16,10 +16,14 @@ const HTTP_REQUEST_TIMEOUT_DEFAULT = 120
 var HTTP_REQUEST_TIMEOUT time.Duration = HTTP_REQUEST_TIMEOUT_DEFAULT
 
 const (
-	authorizeEndpoint = "https://accounts.google.com/o/oauth2/v2/auth"
-	tokenEndpoint     = "https://www.googleapis.com/oauth2/v4/token"
-	AUTH_KEY_ID       = "ID"
-	AUTH_KEY_EMAIL    = "Email"
+	authorizeEndpoint      = "https://accounts.google.com/o/oauth2/v2/auth"
+	tokenEndpoint          = "https://www.googleapis.com/oauth2/v4/token"
+	AUTH_KEY_ACCESS_TOKEN  = "access_token"
+	AUTH_KEY_REFRESH_TOKEN = "refresh_token"
+	AUTH_KEY_ID_TOKEN      = "id_token"
+	AUTH_KEY_ID_EXPIRED    = "expired"
+	AUTH_KEY_ID            = "id"
+	AUTH_KEY_EMAIL         = "email"
 )
 
 type GoogleOAuth2Client struct {
@@ -64,6 +68,10 @@ func (goc *GoogleOAuth2Client) Callback(code string) (map[string]string, error) 
 		log.Error(err)
 		return authedmap, err
 	}
+	authedmap[AUTH_KEY_ACCESS_TOKEN] = token.AccessToken
+	authedmap[AUTH_KEY_REFRESH_TOKEN] = token.RefreshToken
+	authedmap[AUTH_KEY_ID_TOKEN] = fmt.Sprintf("%v", token.Extra("id_token"))
+	authedmap[AUTH_KEY_ID_EXPIRED] = token.Expiry.Format(time.RFC3339)
 	service, _ := v2.New(goc.Config.Client(ctx, token))
 	tokenInfo, _ := service.Tokeninfo().AccessToken(token.AccessToken).Context(ctx).Do()
 
