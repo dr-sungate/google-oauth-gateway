@@ -111,10 +111,10 @@ func OAuth2WithConfig(config OAuth2Config) echo.MiddlewareFunc {
 	if config.TokenLookup == "" {
 		config.TokenLookup = DefaultJOAuth2Config.TokenLookup
 	}
-	if config.AuthScheme == "" && config.AuthScheme != " " {
-		config.AuthScheme = DefaultJOAuth2Config.AuthScheme
-	} else if config.AuthScheme != " " {
+	if config.AuthScheme == " " || config.AuthScheme == "-" {
 		config.AuthScheme = ""
+	} else if config.AuthScheme == "" {
+		config.AuthScheme = DefaultJOAuth2Config.AuthScheme
 	}
 
 	parts := strings.Split(config.TokenLookup, ":")
