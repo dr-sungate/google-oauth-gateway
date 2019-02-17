@@ -21,11 +21,24 @@ func ReadPrivateKey(filepath string, encryptkey *entity.EncryptKey) error {
 	if err != nil {
 		return err
 	}
-	block, _ := pem.Decode(bytes)
+	return ReadPrivateKeyFromByte(bytes, encryptkey)
+}
+
+func ReadPublicKey(filepath string, encryptkey *entity.EncryptKey) error {
+	bytes, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return err
+	}
+	return ReadPublicKeyFromByte(bytes, encryptkey)
+}
+
+func ReadPrivateKeyFromByte(bytedata []byte, encryptkey *entity.EncryptKey) error {
+	block, _ := pem.Decode(bytedata)
 	if block == nil {
 		return errors.New("failed to decode private key data")
 	}
 	var key *rsa.PrivateKey
+	var err error
 	switch block.Type {
 	case RSAPRIVATEKEY_MESSAGE:
 		key, err = x509.ParsePKCS1PrivateKey(block.Bytes)
@@ -47,27 +60,6 @@ func ReadPrivateKey(filepath string, encryptkey *entity.EncryptKey) error {
 	}
 	key.Precompute()
 	encryptkey.PrivateKey = key
-	return nil
-}
-
-func ReadPublicKey(filepath string, encryptkey *entity.EncryptKey) error {
-	bytes, err := ioutil.ReadFile(filepath)
-	if err != nil {
-		return err
-	}
-	block, _ := pem.Decode(bytes)
-	if block == nil || block.Type != PUBLICKEY_MESSAGE {
-		return errors.New("failed to decode PEM block containing public key")
-	}
-	keyInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return err
-	}
-	key, ok := keyInterface.(*rsa.PublicKey)
-	if !ok {
-		return errors.New("not RSA public key")
-	}
-	encryptkey.PublicKey = key
 	return nil
 }
 
