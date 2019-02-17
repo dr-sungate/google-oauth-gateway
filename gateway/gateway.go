@@ -21,7 +21,7 @@ func main() {
 	if os.Getenv("VERIFY_MODE") == "enable" {
 		runtime.SetBlockProfileRate(1)
 		go func() {
-			log.Error("", http.ListenAndServe("0.0.0.0:6060", nil))
+			log.Error(http.ListenAndServe("0.0.0.0:6060", nil))
 		}()
 	}
 	//#####################################
