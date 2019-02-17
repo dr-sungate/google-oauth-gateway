@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/dr-sungate/google-oauth-gateway/api/service/client"
 	log "github.com/dr-sungate/google-oauth-gateway/api/service/logger"
-	"github.com/dr-sungate/google-oauth-gateway/api/service/utils"
+	"github.com/dr-sungate/google-oauth-gateway/api/service/parser"
 	"github.com/labstack/echo/v4"
 	"github.com/satori/go.uuid"
 	"net/http"
@@ -28,5 +28,5 @@ func (goh GoogleOauth2Handler) Callback(c echo.Context) error {
 		return err
 	}
 	log.Info(authmap)
-	return c.JSONPretty(http.StatusOK, authmap, utils.MARSHAL_INDENT)
+	return c.JSONPretty(http.StatusOK, authmap, parser.MARSHAL_INDENT)
 }
