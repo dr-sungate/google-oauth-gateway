@@ -80,6 +80,31 @@ func ReadPublicKeyFromByte(bytedata []byte, encryptkey *entity.EncryptKey) error
 	return nil
 }
 
+func DecodePrivateKeyPKCS1(pubkey *rsa.PrivateKey) []byte {
+	prikey_bytes := x509.MarshalPKCS1PrivateKey(pubkey)
+	pemdata := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  RSAPRIVATEKEY_MESSAGE,
+			Bytes: prikey_bytes,
+		},
+	)
+	return pemdata
+}
+
+func DecodePrivateKeyPKCS8(pubkey *rsa.PrivateKey) ([]byte, error) {
+	prikey_bytes, err := x509.MarshalPKCS8PrivateKey(pubkey)
+	if err != nil {
+		return nil, err
+	}
+	pemdata := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  PRIVATEKEY_MESSAGE,
+			Bytes: prikey_bytes,
+		},
+	)
+	return pemdata, nil
+}
+
 func DecodePublicKey(pubkey *rsa.PublicKey) ([]byte, error) {
 	pubkey_bytes, err := x509.MarshalPKIXPublicKey(pubkey)
 	if err != nil {
