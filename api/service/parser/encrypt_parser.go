@@ -76,7 +76,7 @@ func ReadPublicKeyFromByte(bytedata []byte, encryptkey *entity.EncryptKey) error
 	if !ok {
 		return errors.New("not RSA public key")
 	}
-	encryptkey.PublicKey = key
+	encryptkey.PublicKey = append(encryptkey.PublicKey, key)
 	return nil
 }
 
