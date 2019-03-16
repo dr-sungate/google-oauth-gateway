@@ -2,6 +2,7 @@ package custommiddleware
 
 import (
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	crypto "github.com/SermoDigital/jose/crypto"
 	jws "github.com/SermoDigital/jose/jws"
@@ -41,7 +42,7 @@ type (
 
 		PublicKeyEndPoint string
 		PublicKeyTtl      int
-		PublicKey         *rsa.PublicKey
+		PublicKey         []*rsa.PublicKey
 
 		SigningMethod *crypto.SigningMethodRSA
 
@@ -153,17 +154,21 @@ func OAuth2WithConfig(config OAuth2Config) echo.MiddlewareFunc {
 				log.Error(err)
 				return responseError(err, config)
 			}
-			if err := token.Validate(config.PublicKey, config.SigningMethod); err != nil {
-				log.Error(err)
-				return responseError(err, config)
+			var validateerr error
+			for _, publickey := range config.PublicKey {
+				if validateerr = token.Validate(publickey, config.SigningMethod); err == nil {
+					// Store user information from token into context.
+					c.Set(config.ContextKey, token.Claims())
+					log.Info(token.Claims())
+					if config.SuccessHandler != nil {
+						config.SuccessHandler(c)
+					}
+					return next(c)
+				} else {
+					log.Warn(validateerr)
+				}
 			}
-			// Store user information from token into context.
-			c.Set(config.ContextKey, token.Claims())
-			log.Info(token.Claims())
-			if config.SuccessHandler != nil {
-				config.SuccessHandler(c)
-			}
-			return next(c)
+			return responseError(validateerr, config)
 		}
 	}
 }
@@ -217,7 +222,7 @@ func getPublicKey(c echo.Context, config OAuth2Config) (entity.EncryptKey, error
 	}
 	if cacheddata := getGoCache(config.GoCacheClient, parsedurl); cacheddata != nil {
 		log.Info("PublicKey is Get From Cache")
-		encryptkey.PublicKey = cacheddata.(*rsa.PublicKey)
+		encryptkey.PublicKey = cacheddata.([]*rsa.PublicKey)
 		return encryptkey, nil
 	}
 	responsedata, err := requestGet(parsedurl.String())
@@ -231,30 +236,33 @@ func getPublicKey(c echo.Context, config OAuth2Config) (entity.EncryptKey, error
 		log.Error(err)
 		return encryptkey, err
 	}
-	var keydata []byte
 	switch convertedkeys := keys.(type) {
 	case []interface{}:
-		if len(convertedkeys) > 0 {
-			if jsonbyte, err := parser.JsonToByte(convertedkeys[0]); err != nil {
+		var keydata []byte
+		var err error
+		for _, convertedkey := range convertedkeys {
+			if keydata, err = parser.JsonToByte(convertedkey); err != nil {
 				log.Error(err)
 				return encryptkey, err
-			} else {
-				keydata = jsonbyte
 			}
+			jwk, err := parser.ConvertJSONWebKey(keydata)
+			if err != nil {
+				log.Error(err)
+				return encryptkey, err
+			}
+			publickey, err := parser.ToRSAPublic(&jwk)
+			if err != nil {
+				log.Error(err)
+				return encryptkey, err
+			}
+			encryptkey.PublicKey = append(encryptkey.PublicKey, publickey)
 		}
-	}
-	jwk, err := parser.ConvertJSONWebKey(keydata)
-	if err != nil {
-		log.Error(err)
+		setGoCache(config.GoCacheClient, parsedurl, encryptkey.PublicKey, config.PublicKeyTtl)
+	default:
+		err = errors.New("No JWK Data")
 		return encryptkey, err
+
 	}
-	publickey, err := parser.ToRSAPublic(&jwk)
-	if err != nil {
-		log.Error(err)
-		return encryptkey, err
-	}
-	encryptkey.PublicKey = publickey
-	setGoCache(config.GoCacheClient, parsedurl, publickey, config.PublicKeyTtl)
 	return encryptkey, nil
 }
 

@@ -8,5 +8,5 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	golang.org/x/oauth2 v0.0.0-20190212230446-3e8b2be13635
 	google.golang.org/api v0.1.0
-	gopkg.in/square/go-jose.v2 v2.2.2
+	gopkg.in/square/go-jose.v2 v2.3.0
 )
