@@ -6,5 +6,5 @@ import (
 
 type EncryptKey struct {
 	PrivateKey *rsa.PrivateKey
-	PublicKey  []*rsa.PublicKey
+	PublicKey  *rsa.PublicKey
 }

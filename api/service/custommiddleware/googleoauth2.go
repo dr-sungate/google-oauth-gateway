@@ -135,10 +135,9 @@ func OAuth2WithConfig(config OAuth2Config) echo.MiddlewareFunc {
 			if config.BeforeFunc != nil {
 				config.BeforeFunc(c)
 			}
-			if keyData, err := getPublicKey(c, config); err == nil {
-				config.PublicKey = keyData.PublicKey
-				if err != nil {
-					log.Error(err)
+			if encryptKeys, err := getPublicKey(c, config); err == nil {
+				for _, encryptKey := range encryptKeys {
+					config.PublicKey = append(config.PublicKey, encryptKey.PublicKey)
 				}
 			} else {
 				log.Error(err)
@@ -214,27 +213,27 @@ func tokenFromCookie(name string) tokenExtractor {
 	}
 }
 
-func getPublicKey(c echo.Context, config OAuth2Config) (entity.EncryptKey, error) {
-	encryptkey := entity.EncryptKey{}
+func getPublicKey(c echo.Context, config OAuth2Config) ([]entity.EncryptKey, error) {
+	encryptkeys := make([]entity.EncryptKey, 0)
 	parsedurl, err := url.Parse(config.PublicKeyEndPoint)
 	if err != nil {
-		return encryptkey, err
+		return encryptkeys, err
 	}
 	if cacheddata := getGoCache(config.GoCacheClient, parsedurl); cacheddata != nil {
 		log.Info("PublicKey is Get From Cache")
-		encryptkey.PublicKey = cacheddata.([]*rsa.PublicKey)
-		return encryptkey, nil
+		encryptkeys = cacheddata.([]entity.EncryptKey)
+		return encryptkeys, nil
 	}
 	responsedata, err := requestGet(parsedurl.String())
 	if err != nil {
 		log.Error(err)
-		return encryptkey, err
+		return encryptkeys, err
 	}
 	log.Debug(string(responsedata))
 	keys, err := parser.GetJsonItems(responsedata, "/keys")
 	if err != nil {
 		log.Error(err)
-		return encryptkey, err
+		return encryptkeys, err
 	}
 	switch convertedkeys := keys.(type) {
 	case []interface{}:
@@ -243,27 +242,29 @@ func getPublicKey(c echo.Context, config OAuth2Config) (entity.EncryptKey, error
 		for _, convertedkey := range convertedkeys {
 			if keydata, err = parser.JsonToByte(convertedkey); err != nil {
 				log.Error(err)
-				return encryptkey, err
+				return encryptkeys, err
 			}
 			jwk, err := parser.ConvertJSONWebKey(keydata)
 			if err != nil {
 				log.Error(err)
-				return encryptkey, err
+				return encryptkeys, err
 			}
 			publickey, err := parser.ToRSAPublic(&jwk)
 			if err != nil {
 				log.Error(err)
-				return encryptkey, err
+				return encryptkeys, err
 			}
-			encryptkey.PublicKey = append(encryptkey.PublicKey, publickey)
+			encryptkey := entity.EncryptKey{}
+			encryptkey.PublicKey = publickey
+			encryptkeys = append(encryptkeys, encryptkey)
 		}
-		setGoCache(config.GoCacheClient, parsedurl, encryptkey.PublicKey, config.PublicKeyTtl)
+		setGoCache(config.GoCacheClient, parsedurl, encryptkeys, config.PublicKeyTtl)
 	default:
 		err = errors.New("No JWK Data")
-		return encryptkey, err
+		return encryptkeys, err
 
 	}
-	return encryptkey, nil
+	return encryptkeys, nil
 }
 
 func requestGet(requesturi string) ([]byte, error) {
