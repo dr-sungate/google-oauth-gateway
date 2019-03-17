@@ -282,6 +282,10 @@ func requestGet(requesturi string) ([]byte, error) {
 }
 
 func getGoCache(gocache *client.GoCacheClient, parsedurl *url.URL) interface{} {
+	if gocache == nil {
+		log.Info("No GoCache Client")
+		return nil
+	}
 	if value, exists := gocache.Get(PUBLICKEY_CACHE_PREFIX + parsedurl.String()); exists {
 		return value
 	}
@@ -289,6 +293,10 @@ func getGoCache(gocache *client.GoCacheClient, parsedurl *url.URL) interface{} {
 }
 
 func setGoCache(gocache *client.GoCacheClient, parsedurl *url.URL, publickey interface{}, ttl int) {
+	if gocache == nil {
+		log.Info("No GoCache Client")
+		return
+	}
 	gocache.Set(PUBLICKEY_CACHE_PREFIX+parsedurl.String(), publickey, ttl)
 }
 
