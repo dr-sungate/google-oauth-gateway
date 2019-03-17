@@ -155,7 +155,7 @@ func OAuth2WithConfig(config OAuth2Config) echo.MiddlewareFunc {
 			}
 			var validateerr error
 			for _, publickey := range config.PublicKey {
-				if validateerr = token.Validate(publickey, config.SigningMethod); err == nil {
+				if validateerr = token.Validate(publickey, config.SigningMethod); validateerr == nil {
 					// Store user information from token into context.
 					c.Set(config.ContextKey, token.Claims())
 					log.Info(token.Claims())
