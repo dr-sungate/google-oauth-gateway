@@ -25,6 +25,7 @@ func (goh GoogleOauth2Handler) Callback(c echo.Context) error {
 	oauth2client := client.NewGoogleOAuth2Client()
 	authmap, err := oauth2client.Callback(code)
 	if err != nil {
+		log.Error(err)
 		return err
 	}
 	log.Info(authmap)
